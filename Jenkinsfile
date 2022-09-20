@@ -1,34 +1,40 @@
 node {
-  // Mark the code checkout 'stage'....
-  stage 'Stage Checkout'
+   // Mark the code checkout 'stage'....
+   stage 'checkout'
 
-  // Checkout code from repository and update any submodules
-  checkout scm
-  sh 'git submodule update --init'  
+   // Get some code from a GitHub repository
+   git url: 'https://github.com/kesselborn/jenkinsfile'
+   sh 'git clean -fdx; sleep 4;'
 
-  stage 'Stage Build'
+   // Get the maven tool.
+   // ** NOTE: This 'mvn' maven tool must be configured
+   // **       in the global configuration.
+   def mvnHome = tool 'mvn'
 
-  //branch name from Jenkins environment variables
-  echo "My branch is: ${env.BRANCH_NAME}"
+   stage 'build'
+   // set the version of the build artifact to the Jenkins BUILD_NUMBER so you can
+   // map artifacts to Jenkins builds
+   sh "${mvnHome}/bin/mvn versions:set -DnewVersion=${env.BUILD_NUMBER}"
+   sh "${mvnHome}/bin/mvn package"
 
-  def flavor = flavor(env.BRANCH_NAME)
-  echo "Building flavor ${flavor}"
+   stage 'test'
+   parallel 'test': {
+     sh "${mvnHome}/bin/mvn test; sleep 2;"
+   }, 'verify': {
+     sh "${mvnHome}/bin/mvn verify; sleep 3"
+   }
 
-  //build your gradle flavor, passes the current build number as a parameter to gradle
-  sh "./gradlew clean assemble${flavor}Debug -PBUILD_NUMBER=${env.BUILD_NUMBER}"
-
-  stage 'Stage Archive'
-  //tell Jenkins to archive the apks
-  archiveArtifacts artifacts: 'app/build/outputs/apk/*.apk', fingerprint: true
-
-  stage 'Stage Upload To Fabric'
-  sh "./gradlew crashlyticsUploadDistribution${flavor}Debug  -PBUILD_NUMBER=${env.BUILD_NUMBER}"
+   stage 'archive'
+   archive 'target/*.jar'
 }
 
-// Pulls the android flavor out of the branch name the branch is prepended with /QA_
-@NonCPS
-def flavor(branchName) {
-  def matcher = (env.BRANCH_NAME =~ /QA_([a-z_]+)/)
-  assert matcher.matches()
-  matcher[0][1]
+
+node {
+   stage 'deploy Canary'
+   sh 'echo "write your deploy code here"; sleep 5;'
+
+   stage 'deploy Production'
+   input 'Proceed?'
+   sh 'echo "write your deploy code here"; sleep 6;'
+   archive 'target/*.jar'
 }
