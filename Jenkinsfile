@@ -1,6 +1,7 @@
 pipeline{
   
-  agent any
+  agent any 
+  tool name: 'Maven3', type: 'maven'
   stages{
     
     stage
@@ -10,7 +11,7 @@ pipeline{
     stage("build")
     {
       steps{
-        
+           sh 'mvn clean package''mvn clean package'
       }
     }
     
