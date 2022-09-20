@@ -1,70 +1,34 @@
-node('node') {
+node {
+  // Mark the code checkout 'stage'....
+  stage 'Stage Checkout'
 
+  // Checkout code from repository and update any submodules
+  checkout scm
+  sh 'git submodule update --init'  
 
-    currentBuild.result = "SUCCESS"
+  stage 'Stage Build'
 
-    try {
+  //branch name from Jenkins environment variables
+  echo "My branch is: ${env.BRANCH_NAME}"
 
-       stage('Checkout'){
+  def flavor = flavor(env.BRANCH_NAME)
+  echo "Building flavor ${flavor}"
 
-          checkout scm
-       }
+  //build your gradle flavor, passes the current build number as a parameter to gradle
+  sh "./gradlew clean assemble${flavor}Debug -PBUILD_NUMBER=${env.BUILD_NUMBER}"
 
-       stage('Test'){
+  stage 'Stage Archive'
+  //tell Jenkins to archive the apks
+  archiveArtifacts artifacts: 'app/build/outputs/apk/*.apk', fingerprint: true
 
-         env.NODE_ENV = "test"
+  stage 'Stage Upload To Fabric'
+  sh "./gradlew crashlyticsUploadDistribution${flavor}Debug  -PBUILD_NUMBER=${env.BUILD_NUMBER}"
+}
 
-         print "Environment will be : ${env.NODE_ENV}"
-
-         sh 'node -v'
-         sh 'npm prune'
-         sh 'npm install'
-         sh 'npm test'
-
-       }
-
-       stage('Build Docker'){
-
-            sh './dockerBuild.sh'
-       }
-
-       stage('Deploy'){
-
-         echo 'Push to Repo'
-         sh './dockerPushToRepo.sh'
-
-         echo 'ssh to web server and tell it to pull new image'
-         sh 'ssh deploy@xxxxx.xxxxx.com running/xxxxxxx/dockerRun.sh'
-
-       }
-
-       stage('Cleanup'){
-
-         echo 'prune and cleanup'
-         sh 'npm prune'
-         sh 'rm node_modules -rf'
-
-         mail body: 'project build successful',
-                     from: 'xxxx@yyyyy.com',
-                     replyTo: 'xxxx@yyyy.com',
-                     subject: 'project build successful',
-                     to: 'yyyyy@yyyy.com'
-       }
-
-
-
-    }
-    catch (err) {
-
-        currentBuild.result = "FAILURE"
-
-            mail body: "project build error is here: ${env.BUILD_URL}" ,
-            from: 'xxxx@yyyy.com',
-            replyTo: 'yyyy@yyyy.com',
-            subject: 'project build failed',
-            to: 'zzzz@yyyyy.com'
-
-        throw err
-    }
-
+// Pulls the android flavor out of the branch name the branch is prepended with /QA_
+@NonCPS
+def flavor(branchName) {
+  def matcher = (env.BRANCH_NAME =~ /QA_([a-z_]+)/)
+  assert matcher.matches()
+  matcher[0][1]
 }
